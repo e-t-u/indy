@@ -371,11 +371,16 @@ async function updateTabBadge(tabId, decision) {
 
 /**
  * Check if host has an active temporary "Allow Once" approval in session storage.
+ * Matches exact host, root domain, or www. variant.
  */
 async function hasAllowOncePass(host) {
   const cleanHost = String(host || '').toLowerCase();
+  const rootDomain = cleanHost.replace(/^www\./, '');
   const { allowOnceHosts = {} } = await chrome.storage.session.get('allowOnceHosts');
-  const expiry = allowOnceHosts[cleanHost];
+  const expiry =
+    allowOnceHosts[cleanHost] ||
+    allowOnceHosts[rootDomain] ||
+    allowOnceHosts[`www.${rootDomain}`];
   if (expiry && Date.now() < expiry) {
     return true;
   }
@@ -388,8 +393,12 @@ async function hasAllowOncePass(host) {
  */
 async function grantAllowOncePass(host, durationMs = ALLOW_ONCE_TTL_MS) {
   const cleanHost = String(host || '').toLowerCase();
+  const rootDomain = cleanHost.replace(/^www\./, '');
   const { allowOnceHosts = {} } = await chrome.storage.session.get('allowOnceHosts');
-  allowOnceHosts[cleanHost] = Date.now() + durationMs;
+  const expiresAt = Date.now() + durationMs;
+  allowOnceHosts[cleanHost] = expiresAt;
+  allowOnceHosts[rootDomain] = expiresAt;
+  allowOnceHosts[`www.${rootDomain}`] = expiresAt;
   await chrome.storage.session.set({ allowOnceHosts });
 }
 
@@ -434,11 +443,22 @@ async function saveTabState(tabId, stateObj) {
 }
 
 /**
- * Intercept top-level HTTPS navigations and enforce Root + Intermediate certificate policies.
+ * Core Navigation Enforcement Engine
+ * Handles top-level navigations across all stages:
+ * - onBeforeNavigate: Early interception & background TLS cache pre-warming
+ * - onCommitted: Post-redirect commitment enforcement (catches http->https 301/302 redirects)
+ * - onHistoryStateUpdated: Single-page application router transitions
  */
-chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
+async function enforceNavigation(details, stage = 'before') {
   if (details.frameId !== 0) return;
-  if (!details.url || !details.url.startsWith('https://')) return;
+  if (!details.url) return;
+  if (
+    details.url.startsWith('chrome-extension://') ||
+    details.url.startsWith('chrome://') ||
+    details.url.startsWith('about:')
+  ) {
+    return;
+  }
 
   let parsedUrl;
   try {
@@ -446,6 +466,15 @@ chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
   } catch (_err) {
     return;
   }
+
+  // If user entered http:// (e.g. "aliexpress.com"), pre-warm TLS inspection for https in background
+  if (parsedUrl.protocol === 'http:') {
+    const rawHost = parsedUrl.hostname.toLowerCase();
+    resolveHostChain(rawHost, 443, false).catch(() => {});
+    return;
+  }
+
+  if (parsedUrl.protocol !== 'https:') return;
 
   const host = parsedUrl.hostname.toLowerCase();
   const port = Number(parsedUrl.port || 443);
@@ -486,7 +515,8 @@ chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
       rootCommonName: rootName,
       intermediateCommonNames: intNames,
       decision: 'accept',
-      reason: evaluation.reason
+      reason: evaluation.reason,
+      stage
     });
     return;
   }
@@ -500,7 +530,8 @@ chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
       rootCommonName: rootName,
       intermediateCommonNames: intNames,
       decision: 'deny',
-      reason: evaluation.reason
+      reason: evaluation.reason,
+      stage
     });
 
     const blockedUrl = new URL(chrome.runtime.getURL('blocked/blocked.html'));
@@ -527,7 +558,8 @@ chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
       rootCommonName: rootName,
       intermediateCommonNames: intNames,
       decision: 'ask_allowed_once',
-      reason: 'User granted temporary one-time visit approval (policy remains ask)'
+      reason: 'User granted temporary one-time visit approval (policy remains ask)',
+      stage
     });
     return;
   }
@@ -539,7 +571,8 @@ chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
     rootCommonName: rootName,
     intermediateCommonNames: intNames,
     decision: 'ask_prompted',
-    reason: evaluation.reason
+    reason: evaluation.reason,
+    stage
   });
 
   const promptUrl = new URL(chrome.runtime.getURL('prompt/prompt.html'));
@@ -552,6 +585,18 @@ chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
   } catch (_err) {
     // Ignore if tab closed
   }
+}
+
+chrome.webNavigation.onBeforeNavigate.addListener((details) => {
+  enforceNavigation(details, 'before_navigate');
+});
+
+chrome.webNavigation.onCommitted.addListener((details) => {
+  enforceNavigation(details, 'committed');
+});
+
+chrome.webNavigation.onHistoryStateUpdated.addListener((details) => {
+  enforceNavigation(details, 'history_state');
 });
 
 /**

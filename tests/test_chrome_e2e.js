@@ -340,6 +340,21 @@ async function runTests() {
     const blockedReason = await page.evaluate(() => document.getElementById('blocked-reason').textContent);
     logPass(`Blocked UI rendered: "${blockedReason}"`);
 
+    // 11. Verify real browser navigation interception on HTTP->HTTPS redirect (aliexpress.com)
+    logInfo('Step 11: Testing real browser tab navigation interception on HTTP redirect (aliexpress.com)...');
+    const liveNavTab = await browser.newPage();
+    try {
+      await liveNavTab.goto('http://aliexpress.com', { waitUntil: 'load', timeout: 15000 });
+    } catch (_) {
+      // Aborted by redirect to prompt.html is expected
+    }
+    const finalNavUrl = liveNavTab.url();
+    if (!finalNavUrl.includes('prompt/prompt.html')) {
+      throw new Error(`Expected navigation to redirect to prompt.html, got: ${finalNavUrl}`);
+    }
+    logPass(`Live tab intercepted & redirected to Indy prompt: ${finalNavUrl}`);
+    await liveNavTab.close();
+
     console.log('\n\x1b[32m=======================================================');
     console.log('ALL INDY CHROME EXTENSION E2E TESTS PASSED SUCCESSFULLY');
     console.log('=======================================================\x1b[0m\n');
