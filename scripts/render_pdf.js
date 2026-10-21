@@ -748,18 +748,55 @@ async function renderPDF() {
         ]
     };
 
-    const candidatePaths = [
+    const os = require('os');
+    const cp = require('child_process');
+
+    const standardPaths = [
         process.env.CHROME_BIN,
-        '/usr/bin/chromium-browser',
+        '/usr/bin/google-chrome',
+        '/usr/bin/google-chrome-stable',
         '/usr/bin/chromium',
-        '/home/etu/.cache/puppeteer/chrome/linux-151.0.7922.47/chrome-linux64/chrome',
-        '/home/etu/.cache/puppeteer/chrome/linux-150.0.7871.24/chrome-linux64/chrome'
+        '/usr/bin/chromium-browser',
+        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
     ].filter(Boolean);
 
-    for (const p of candidatePaths) {
+    for (const p of standardPaths) {
         if (fs.existsSync(p)) {
             puppeteerOptions.executablePath = p;
             break;
+        }
+    }
+
+    if (!puppeteerOptions.executablePath) {
+        for (const bin of ['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser']) {
+            try {
+                const found = cp.execSync(`which ${bin} 2>/dev/null`).toString().trim();
+                if (found && fs.existsSync(found)) {
+                    puppeteerOptions.executablePath = found;
+                    break;
+                }
+            } catch (_) {}
+        }
+    }
+
+    if (!puppeteerOptions.executablePath) {
+        const puppeteerCacheDir = path.join(os.homedir(), '.cache', 'puppeteer', 'chrome');
+        if (fs.existsSync(puppeteerCacheDir)) {
+            const entries = fs.readdirSync(puppeteerCacheDir, { withFileTypes: true });
+            for (const entry of entries) {
+                if (entry.isDirectory()) {
+                    const candidateLinux = path.join(puppeteerCacheDir, entry.name, 'chrome-linux64', 'chrome');
+                    if (fs.existsSync(candidateLinux)) {
+                        puppeteerOptions.executablePath = candidateLinux;
+                        break;
+                    }
+                    const candidateMac = path.join(puppeteerCacheDir, entry.name, 'chrome-mac-x64', 'Google Chrome for Testing.app', 'Contents', 'MacOS', 'Google Chrome for Testing');
+                    if (fs.existsSync(candidateMac)) {
+                        puppeteerOptions.executablePath = candidateMac;
+                        break;
+                    }
+                }
+            }
         }
     }
 

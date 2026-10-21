@@ -5,7 +5,61 @@
 
 const fs = require('fs');
 const path = require('path');
-const puppeteer = require('/home/etu/node_modules/puppeteer');
+const os = require('os');
+const cp = require('child_process');
+
+function requirePuppeteer() {
+  try {
+    return require('puppeteer');
+  } catch (err) {
+    const candidatePaths = [
+      path.join(os.homedir(), 'node_modules', 'puppeteer'),
+      path.join(__dirname, '..', 'node_modules', 'puppeteer'),
+      path.join(__dirname, 'node_modules', 'puppeteer')
+    ];
+    for (const p of candidatePaths) {
+      if (fs.existsSync(p)) return require(p);
+    }
+    throw new Error('Puppeteer is not installed. Run "npm install puppeteer".');
+  }
+}
+
+function resolveChromeExecutable() {
+  if (process.env.CHROME_BIN && fs.existsSync(process.env.CHROME_BIN)) {
+    return process.env.CHROME_BIN;
+  }
+  const standardPaths = [
+    '/usr/bin/google-chrome',
+    '/usr/bin/google-chrome-stable',
+    '/usr/bin/chromium',
+    '/usr/bin/chromium-browser',
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+  ];
+  for (const p of standardPaths) {
+    if (fs.existsSync(p)) return p;
+  }
+  for (const bin of ['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser']) {
+    try {
+      const found = cp.execSync(`which ${bin} 2>/dev/null`).toString().trim();
+      if (found && fs.existsSync(found)) return found;
+    } catch (_) {}
+  }
+  const puppeteerCacheDir = path.join(os.homedir(), '.cache', 'puppeteer', 'chrome');
+  if (fs.existsSync(puppeteerCacheDir)) {
+    const entries = fs.readdirSync(puppeteerCacheDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        const candidateLinux = path.join(puppeteerCacheDir, entry.name, 'chrome-linux64', 'chrome');
+        if (fs.existsSync(candidateLinux)) return candidateLinux;
+        const candidateMac = path.join(puppeteerCacheDir, entry.name, 'chrome-mac-x64', 'Google Chrome for Testing.app', 'Contents', 'MacOS', 'Google Chrome for Testing');
+        if (fs.existsSync(candidateMac)) return candidateMac;
+      }
+    }
+  }
+  return undefined;
+}
+
+const puppeteer = requirePuppeteer();
 
 const EXT_PATH = path.join(__dirname, '..', 'extension');
 const EXT_ID = 'hmfkankhnneijoaagpgpdcccmoadjaep';
@@ -14,9 +68,7 @@ const OUT_DIR = path.join(__dirname, '..', 'docs', 'screenshots');
 fs.mkdirSync(OUT_DIR, { recursive: true });
 
 async function capture() {
-  const chromeExecutable =
-    process.env.CHROME_BIN ||
-    '/home/etu/.cache/puppeteer/chrome/linux-151.0.7922.47/chrome-linux64/chrome';
+  const chromeExecutable = resolveChromeExecutable();
 
   const browser = await puppeteer.launch({
     executablePath: chromeExecutable,
