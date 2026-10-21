@@ -25,16 +25,51 @@ import sys
 import threading
 import time
 import urllib.parse
+import urllib.request
 import warnings
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Dict, List, Optional, Tuple
 
-from cryptography import x509
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.utils import CryptographyDeprecationWarning
-from cryptography.x509.oid import ExtensionOID, NameOID
+try:
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.utils import CryptographyDeprecationWarning
+    from cryptography.x509.oid import ExtensionOID, NameOID
+    warnings.filterwarnings("ignore", category=CryptographyDeprecationWarning)
+    HAS_CRYPTOGRAPHY = True
+except ImportError:
+    HAS_CRYPTOGRAPHY = False
 
-warnings.filterwarnings("ignore", category=CryptographyDeprecationWarning)
+DEFAULT_HTTP_PORT = 7879
+
+def run_flatpak_relay_loop(port: int = DEFAULT_HTTP_PORT) -> None:
+    """Zero-dependency Native Messaging relay client for Flatpak container environments."""
+    stdin_buf = sys.stdin.buffer
+    stdout_buf = sys.stdout.buffer
+    url = f"http://127.0.0.1:{port}/rpc"
+
+    while True:
+        raw_len = stdin_buf.read(4)
+        if not raw_len or len(raw_len) < 4:
+            break
+        msg_len = struct.unpack("=I", raw_len)[0]
+        raw_msg = stdin_buf.read(msg_len)
+        if not raw_msg:
+            break
+        try:
+            req = urllib.request.Request(
+                url,
+                data=raw_msg,
+                headers={"Content-Type": "application/json"}
+            )
+            with urllib.request.urlopen(req, timeout=10.0) as resp:
+                resp_bytes = resp.read()
+        except Exception as exc:
+            resp_bytes = json.dumps({"ok": False, "error": f"Relay error: {exc}"}).encode("utf-8")
+
+        stdout_buf.write(struct.pack("=I", len(resp_bytes)))
+        stdout_buf.write(resp_bytes)
+        stdout_buf.flush()
 
 SYSTEM_CA_BUNDLE_PATHS = [
     "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem",
@@ -551,6 +586,19 @@ def run_http_server(resolver: CertificateResolver, host: str = "127.0.0.1", port
 
 
 def main() -> None:
+    if not HAS_CRYPTOGRAPHY:
+        # Running inside container/Flatpak runtime without cryptography
+        parser = argparse.ArgumentParser(description="Indy Flatpak Native Relay Client")
+        parser.add_argument("--resolve", metavar="HOST")
+        parser.add_argument("--port", type=int, default=DEFAULT_HTTP_PORT)
+        args, _unknown = parser.parse_known_args()
+        if args.resolve:
+            req = urllib.request.urlopen(f"http://127.0.0.1:{args.port}/resolve?host={args.resolve}")
+            print(req.read().decode("utf-8"))
+            return
+        run_flatpak_relay_loop(args.port)
+        return
+
     parser = argparse.ArgumentParser(description="Indy Certificate Host & TLS Chain Inspector")
     parser.add_argument("--serve", action="store_true", help="Run as local HTTP bridge server")
     parser.add_argument("--host", default="127.0.0.1", help="HTTP bind address (default: 127.0.0.1)")
