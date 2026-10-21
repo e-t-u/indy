@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "Indy — Root & Intermediate Certificate Trust Guard",
+  "version": "1.0.0",
+  "description": "Makes accepting root and intermediate TLS certificates visible and optional with Accept, Ask, and Deny policies booted from system root certificates.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAw2xR6ZWZzFdoC60xbIhDJeMVWDpWQR8A2baBHnv0rePcWVFJj6XkoJ9yZgFlVNgdnLaYUBxZih6yDg1/8D9gDHVrPhtQMPPcEjfZ+LAvjGM+GMIq2if+/pKYJVAooLwP0apa4UvUpVXAoauZgn2wsHEx9TC7zfkHgWk6aWcgzNayC2PsGaI380lisvXxQshKzac4sRDm6zUl319JrEXlGFtJDBam/QD33c0jNxR/y0ofzaXbm623ho0UE8xjcnW2VMI67i0Gd96V9vsDjgc0SFJBLxAo3jLySRl//pS90F3tsYQtvHO379EdngoDFG4ZEH9CL520wN/sMtnZDLQWkQIDAQAB",
+  "permissions": [
+    "storage",
+    "tabs",
+    "webNavigation",
+    "declarativeNetRequest",
+    "nativeMessaging"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:7879/*",
+    "<all_urls>"
+  ],
+  "icons": {
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_title": "Indy Certificate Trust Guard",
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "options_page": "options/options.html",
+  "background": {
+    "service_worker": "background/service-worker.js"
+  }
+}

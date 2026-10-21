@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Indy — Root &amp; Intermediate Certificate Database</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="page-wrap">
+    <header class="top-header">
+      <div class="brand">
+        <img src="../icons/icon-48.png" alt="Indy" class="brand-logo">
+        <div>
+          <span class="eyebrow">INDY TRUST ANCHOR DATABASE</span>
+          <h1>Root &amp; Intermediate Certificate Policy Manager</h1>
+          <p class="bundle-info" id="bundle-info">Bootstrapped from OS system root store</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button id="btn-sync-roots" type="button" class="btn-action primary">Sync System Root Store</button>
+        <button id="btn-bulk-ask" type="button" class="btn-action">Set All to Ask</button>
+        <button id="btn-bulk-accept" type="button" class="btn-action">Set All to Accept</button>
+      </div>
+    </header>
+
+    <section class="stats-grid">
+      <div class="stat-card">
+        <span class="stat-label">System Root CAs</span>
+        <span class="stat-value" id="stat-roots">0</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Intermediate CAs</span>
+        <span class="stat-value" id="stat-intermediates">0</span>
+      </div>
+      <div class="stat-card accept">
+        <span class="stat-label">Accepted (Auto-Trust)</span>
+        <span class="stat-value" id="stat-accept">0</span>
+      </div>
+      <div class="stat-card ask">
+        <span class="stat-label">Ask (Prompt User)</span>
+        <span class="stat-value" id="stat-ask">0</span>
+      </div>
+      <div class="stat-card deny">
+        <span class="stat-label">Denied (Never Accept)</span>
+        <span class="stat-value" id="stat-deny">0</span>
+      </div>
+    </section>
+
+    <section class="controls-bar">
+      <input
+        type="search"
+        id="search-input"
+        class="search-input"
+        placeholder="Search by Common Name (e.g. indy, GTS Root R4, WE2, DigiCert), Organization, or SHA-256..."
+      >
+      <select id="filter-role" class="select-control">
+        <option value="all">All Roles (Root + Intermediate)</option>
+        <option value="root">Root CAs Only</option>
+        <option value="intermediate">Intermediate CAs Only</option>
+      </select>
+      <select id="filter-policy" class="select-control">
+        <option value="all">All Policies</option>
+        <option value="accept">Accept Only</option>
+        <option value="ask">Ask Only</option>
+        <option value="deny">Deny Only</option>
+      </select>
+      <label class="checkbox-label">
+        <input type="checkbox" id="chk-enforce-intermediates" checked>
+        Enforce Intermediate CA Policies
+      </label>
+    </section>
+
+    <section class="table-section">
+      <table class="cert-table">
+        <thead>
+          <tr>
+            <th>Role</th>
+            <th>Common Name &amp; Subject</th>
+            <th>Organization / Issuer</th>
+            <th>Validity</th>
+            <th>SHA-256 Fingerprint</th>
+            <th>Trust Policy</th>
+          </tr>
+        </thead>
+        <tbody id="cert-tbody"></tbody>
+      </table>
+    </section>
+
+    <section class="audit-section">
+      <div class="audit-header">
+        <h2>Recent TLS Chain Evaluations &amp; Decisions</h2>
+        <button id="btn-clear-audit" type="button" class="btn-action">Clear Log</button>
+      </div>
+      <table class="cert-table">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Host</th>
+            <th>Root CA</th>
+            <th>Intermediate CA(s)</th>
+            <th>Decision</th>
+            <th>Reason</th>
+          </tr>
+        </thead>
+        <tbody id="audit-tbody"></tbody>
+      </table>
+    </section>
+  </div>
+  <script src="options.js"></script>
+</body>
+</html>

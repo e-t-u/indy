@@ -1,0 +1,12 @@
+[Unit]
+Description=Indy Certificate Trust & TLS Chain Inspector Bridge
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /home/etu/git/indy/host/indy_host.py --serve --host 127.0.0.1 --port 7879
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,9 @@
+{
+  "name": "com.etu.indy",
+  "description": "Indy Root & Intermediate Certificate Trust Inspector Host",
+  "path": "/home/etu/git/indy/host/indy_host.py",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://hmfkankhnneijoaagpgpdcccmoadjaep/"
+  ]
+}

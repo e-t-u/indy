@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Indy — Certificate Trust Verification Required</title>
+  <link rel="stylesheet" href="prompt.css">
+</head>
+<body>
+  <main class="container">
+    <header class="header">
+      <div class="brand">
+        <img src="../icons/icon-48.png" alt="Indy Shield" class="brand-icon">
+        <div>
+          <span class="eyebrow">INDY CERTIFICATE TRUST GUARD</span>
+          <h1>Certificate Authority Trust Decision Required</h1>
+        </div>
+      </div>
+      <button id="btn-open-options" type="button" class="btn-secondary-sm">Manage All Certificates</button>
+    </header>
+
+    <section class="summary-banner" id="summary-banner">
+      <div class="summary-row">
+        <span class="summary-label">Target Destination:</span>
+        <code id="target-url" class="target-url">Loading...</code>
+      </div>
+      <div class="summary-row">
+        <span class="summary-label">Status:</span>
+        <span id="trigger-reason" class="trigger-reason">Inspecting TLS certificate chain...</span>
+      </div>
+    </section>
+
+    <section class="chain-section">
+      <h2>TLS Certificate Chain Hierarchy (Root &amp; Intermediate CAs)</h2>
+      <p class="section-desc">
+        Indy verifies every Root and Intermediate Certificate Authority in the chain against its database booted from your system root store. Select how Indy should handle each authority below:
+      </p>
+      <div id="chain-list" class="chain-list">
+        <div class="loading-state">Resolving TLS certificate chain...</div>
+      </div>
+    </section>
+
+    <footer class="actions-bar">
+      <div class="primary-actions">
+        <button id="btn-accept-all" type="button" class="btn btn-accept">
+          Accept Always (Trust Chain)
+        </button>
+        <button id="btn-ask-once" type="button" class="btn btn-ask">
+          Ask Every Time (Allow This Visit)
+        </button>
+        <button id="btn-deny-all" type="button" class="btn btn-deny">
+          Deny Always (Never Accept)
+        </button>
+      </div>
+      <div class="secondary-actions">
+        <button id="btn-apply-custom" type="button" class="btn btn-outline">
+          Apply Per-Certificate Selections Above
+        </button>
+      </div>
+    </footer>
+  </main>
+  <script src="prompt.js"></script>
+</body>
+</html>
