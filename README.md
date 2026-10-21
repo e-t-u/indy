@@ -48,6 +48,30 @@ flowchart LR
 
 ---
 
+## User Interface & Screenshots
+
+### 1. Interstitial Decision Prompt (`prompt.html`)
+When a target website's TLS chain relies on a Root or Intermediate Certificate Authority that is not explicitly set to `accept`, navigation pauses at this interstitial prompt. Users inspect the full certificate hierarchy and choose to Accept Always, Ask Every Time (one-time approval), or Deny Always.
+
+![Certificate Authority Trust Decision Prompt](docs/screenshots/prompt.png)
+
+### 2. Root & Intermediate Policy Manager (`options.html`)
+The database management console booted from the host operating system's root store (`/etc/pki/ca-trust/...` or `/etc/ssl/certs/...`). Users can search, filter by role (Root vs. Intermediate) or policy (`accept`, `ask`, `deny`), apply bulk policies, and inspect the real-time audit log.
+
+![Root & Intermediate Certificate Policy Manager](docs/screenshots/options.png)
+
+### 3. Active Tab Chain Inspector (`popup.html`)
+The toolbar popup displays the active tab's certificate hierarchy (Root CA &rarr; Intermediate CA(s) &rarr; Leaf Server Certificate) and provides instant one-click policy toggles for authorities on the current page.
+
+![Active Tab Chain Inspector Toolbar Popup](docs/screenshots/popup.png)
+
+### 4. Connection Blocked Screen (`blocked.html`)
+When an HTTPS site presents a certificate chained to a denied Root or Intermediate CA, Indy immediately blocks the navigation and adds Chrome Declarative Net Request (DNR) session rules to prevent background subresource requests.
+
+![Denied Certificate Authority Block Screen](docs/screenshots/blocked.png)
+
+---
+
 ## Project Structure
 
 ```text

@@ -1,0 +1,89 @@
+#!/usr/bin/env node
+/**
+ * Capture high-DPI screenshots of Indy extension pages for documentation.
+ */
+
+const fs = require('fs');
+const path = require('path');
+const puppeteer = require('/home/etu/node_modules/puppeteer');
+
+const EXT_PATH = path.join(__dirname, '..', 'extension');
+const EXT_ID = 'hmfkankhnneijoaagpgpdcccmoadjaep';
+const OUT_DIR = path.join(__dirname, '..', 'docs', 'screenshots');
+
+fs.mkdirSync(OUT_DIR, { recursive: true });
+
+async function capture() {
+  const chromeExecutable =
+    process.env.CHROME_BIN ||
+    '/home/etu/.cache/puppeteer/chrome/linux-151.0.7922.47/chrome-linux64/chrome';
+
+  const browser = await puppeteer.launch({
+    executablePath: chromeExecutable,
+    headless: 'new',
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      `--disable-extensions-except=${EXT_PATH}`,
+      `--load-extension=${EXT_PATH}`
+    ]
+  });
+
+  try {
+    const page = await browser.newPage();
+    await page.setViewport({ width: 1200, height: 800, deviceScaleFactor: 2 });
+
+    // 1. Capture Options / Database Manager
+    console.log('Capturing options page...');
+    await page.goto(`chrome-extension://${EXT_ID}/options/options.html`, { waitUntil: 'networkidle0' });
+    await page.waitForFunction(() => {
+      const el = document.getElementById('stat-roots');
+      return el && parseInt(el.textContent, 10) > 50;
+    }, { timeout: 10000 });
+    // Let table render
+    await new Promise(r => setTimeout(r, 600));
+    const optionsPath = path.join(OUT_DIR, 'options.png');
+    await page.screenshot({ path: optionsPath, fullPage: false });
+    console.log(`Saved ${optionsPath}`);
+
+    // 2. Capture Interstitial Prompt UI
+    console.log('Capturing prompt page...');
+    await page.setViewport({ width: 1000, height: 820, deviceScaleFactor: 2 });
+    const promptUrl = `chrome-extension://${EXT_ID}/prompt/prompt.html?target=https%3A%2F%2Fwww.google.com&host=www.google.com&port=443`;
+    await page.goto(promptUrl, { waitUntil: 'networkidle0' });
+    await page.waitForSelector('.cert-card');
+    await new Promise(r => setTimeout(r, 600));
+    const promptPath = path.join(OUT_DIR, 'prompt.png');
+    await page.screenshot({ path: promptPath, fullPage: false });
+    console.log(`Saved ${promptPath}`);
+
+    // 3. Capture Blocked UI
+    console.log('Capturing blocked page...');
+    const blockedUrl = `chrome-extension://${EXT_ID}/blocked/blocked.html?target=https%3A%2F%2Findy.test.local&host=indy.test.local&port=443`;
+    await page.goto(blockedUrl, { waitUntil: 'networkidle0' });
+    await page.waitForSelector('.cert-item');
+    await new Promise(r => setTimeout(r, 600));
+    const blockedPath = path.join(OUT_DIR, 'blocked.png');
+    await page.screenshot({ path: blockedPath, fullPage: false });
+    console.log(`Saved ${blockedPath}`);
+
+    // 4. Capture Popup UI
+    console.log('Capturing popup page...');
+    await page.setViewport({ width: 420, height: 500, deviceScaleFactor: 2 });
+    await page.goto(`chrome-extension://${EXT_ID}/popup/popup.html`, { waitUntil: 'networkidle0' });
+    await new Promise(r => setTimeout(r, 800));
+    const popupPath = path.join(OUT_DIR, 'popup.png');
+    await page.screenshot({ path: popupPath, fullPage: false });
+    console.log(`Saved ${popupPath}`);
+
+    console.log('All screenshots captured successfully.');
+  } finally {
+    await browser.close();
+  }
+}
+
+capture().catch(err => {
+  console.error('Screenshot capture failed:', err);
+  process.exit(1);
+});
