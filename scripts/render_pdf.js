@@ -77,16 +77,20 @@ async function renderPDF() {
 
     // =========================================================================
     // GITHUB ALERT / CALLOUT BOX TRANSFORMER ([!NOTE], [!TIP], [!IMPORTANT], etc.)
-    // Converts GFM alert blocks into styled executive callout boxes with icons
+    // Converts GFM alert blocks into styled executive callout boxes with vector Octicons
     // =========================================================================
+    const ALERT_ICONS = {
+        NOTE: '<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"/></svg>',
+        TIP: '<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><path d="M8 1.5c-2.363 0-4 1.69-4 3.75 0 .984.424 1.625.984 2.304l.214.253c.223.264.47.556.673.848.284.411.537.896.621 1.49a.75.75 0 0 1-1.484.211c-.04-.282-.163-.547-.37-.847a8.456 8.456 0 0 0-.542-.68c-.09-.1-.18-.2-.27-.301C3.197 7.75 2.5 6.725 2.5 5.25 2.5 2.31 4.863 0 8 0s5.5 2.31 5.5 5.25c0 1.475-.697 2.5-1.326 3.256-.09.102-.18.201-.27.302-.18.201-.35.405-.542.68-.207.3-.33.565-.37.847a.751.751 0 0 1-1.485-.212c.084-.593.337-1.078.621-1.489.203-.292.45-.584.673-.848.075-.088.147-.173.213-.253.561-.679.985-1.32.985-2.304 0-2.06-1.637-3.75-4-3.75ZM5.75 12h4.5a.75.75 0 0 1 0 1.5h-4.5a.75.75 0 0 1 0-1.5Zm1.5 3h1.5a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1 0-1.5Z"/></svg>',
+        IMPORTANT: '<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><path d="M0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v9.5A1.75 1.75 0 0 1 14.25 13H9.06l-2.573 2.573A1.458 1.458 0 0 1 4 14.543V13H1.75A1.75 1.75 0 0 1 0 11.25Zm1.75-.25a.25.25 0 0 0-.25.25v9.5c0 .138.112.25.25.25h3a.75.75 0 0 1 .75.75v2.19l2.72-2.72a.749.749 0 0 1 .53-.22h5.5a.25.25 0 0 0 .25-.25v-9.5a.25.25 0 0 0-.25-.25Zm6.25 2.5a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 8 4Zm0 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"/></svg>',
+        WARNING: '<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><path d="M6.457 1.047c.659-1.234 2.427-1.234 3.086 0l6.082 11.378A1.75 1.75 0 0 1 14.082 15H1.918a1.75 1.75 0 0 1-1.543-2.575Zm1.763.707a.25.25 0 0 0-.44 0L1.698 13.132a.25.25 0 0 0 .22.368h12.164a.25.25 0 0 0 .22-.368Zm.53 3.996v2.5a.75.75 0 0 1-1.5 0v-2.5a.75.75 0 0 1 1.5 0ZM9 11a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z"/></svg>',
+        CAUTION: '<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><path d="M4.47.047A1.75 1.75 0 0 1 5.707 0h4.586c.464 0 .909.184 1.237.513l3.957 3.957c.329.328.513.773.513 1.237v4.586c0 .464-.184.909-.513 1.237l-3.957 3.957a1.75 1.75 0 0 1-1.237.513H5.707a1.75 1.75 0 0 1-1.237-.513L.513 11.543A1.75 1.75 0 0 1 0 11.071V6.485c0-.464.184-.909.513-1.237ZM5.707 1.5a.25.25 0 0 0-.177.073L1.573 5.53a.25.25 0 0 0-.073.177v4.586c0 .066.026.13.073.177l3.957 3.957c.047.047.111.073.177.073h4.586a.25.25 0 0 0 .177-.073l3.957-3.957a.25.25 0 0 0 .073-.177V5.707a.25.25 0 0 0-.073-.177L10.464 1.573a.25.25 0 0 0-.177-.073ZM8 4a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 8 4Zm0 7a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"/></svg>'
+    };
+
     mdContent = mdContent.replace(/^>\s*\[\!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\][ \t]*(.*(?:\n>.*)*)/gm, (match, type, content) => {
         const cleanBody = content.replace(/^>\s?/gm, '').trim();
         const typeUpper = type.toUpperCase();
-        let icon = 'ℹ️';
-        if (typeUpper === 'TIP') icon = '💡';
-        if (typeUpper === 'IMPORTANT') icon = '📌';
-        if (typeUpper === 'WARNING') icon = '⚠️';
-        if (typeUpper === 'CAUTION') icon = '🚨';
+        const icon = ALERT_ICONS[typeUpper] || ALERT_ICONS.NOTE;
         
         return `<div class="callout callout-${typeUpper.toLowerCase()}"><div class="callout-title"><span class="callout-icon">${icon}</span> ${typeUpper}</div><div class="callout-body">\n\n${cleanBody}\n\n</div></div>\n\n`;
     });
@@ -559,7 +563,15 @@ async function renderPDF() {
             gap: 6px;
         }
         .callout-icon {
-            font-size: 11pt;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+        }
+        .callout-icon svg {
+            width: 14px;
+            height: 14px;
+            display: block;
         }
         .callout-body {
             font-size: 9.5pt;
