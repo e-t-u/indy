@@ -664,7 +664,7 @@ async function renderPDF() {
             font-size: 9.5pt;
             text-transform: uppercase;
             letter-spacing: 0.5px;
-            padding: 8pt 10pt;
+            padding: 6.5pt 8pt;
             border-bottom: 3px solid #D4AF37 !important;
             border-right: 1px solid #1E3A8A;
         }
@@ -672,7 +672,7 @@ async function renderPDF() {
             border-right: none;
         }
         td {
-            padding: 7pt 10pt;
+            padding: 5.5pt 8pt;
             border-bottom: 1px solid #E2E8F0;
             border-right: 1px solid #F1F5F9;
             color: #1E293B;
@@ -730,6 +730,11 @@ async function renderPDF() {
             color: inherit;
             display: block;
             overflow: visible !important;
+        }
+        body > *:last-child,
+        body > div:last-child > *:last-child {
+            margin-bottom: 0 !important;
+            padding-bottom: 0 !important;
         }
     </style>
 </head>

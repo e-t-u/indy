@@ -177,3 +177,65 @@ sequenceDiagram
 - Content Security Policy (CSP): Extension pages enforce strict MV3 CSP. No inline scripts, no `eval()`, and no remote code execution. All dynamic DOM nodes are created safely via `document.createElement()` and `textContent`.
 - Network Isolation via DNR: When a certificate is denied, Indy doesn't simply redirect the main HTML document; it injects a Declarative Net Request session rule blocking subresources (scripts, XMLHttpRequests, stylesheets, fonts, websockets) to prevent covert data leakage.
 - Deterministic Identity: The extension manifest specifies a deterministic 2048-bit RSA public key, locking the extension ID across all installations and test environments to `hmfkankhnneijoaagpgpdcccmoadjaep`.
+
+---
+
+## 6. Division of Responsibility: Indy Policy Gating vs. Native Chrome Certificate Engine
+
+A critical architectural distinction in Indy is that it does **not** replace or patch Google Chrome's underlying C++ cryptographic certificate verifier (`//net/cert/CertVerifyProc` and BoringSSL). Instead, Indy operates as an **outer supervisory policy and authorization gate** layered on top of Chrome's native network stack.
+
+### 6.1 Native Chrome Cryptographic Engine Responsibilities
+
+The native Chrome network engine remains strictly authoritative for the cryptographic validity and integrity of every TLS connection:
+
+1. Cryptographic Signature Validation:
+   BoringSSL verifies that each certificate in the TLS chain is cryptographically signed by the public key of its issuing Certificate Authority using valid signature algorithms (e.g. SHA-256 with RSA, ECDSA P-256/P-384).
+2. Hostname & SAN Matching:
+   Chrome validates that the target domain in the URL matches the Subject Alternative Name (`dNSName` or `iPAddress`) entries in the leaf certificate. If there is a mismatch, Chrome natively aborts with `NET::ERR_CERT_COMMON_NAME_INVALID`.
+3. Validity Period & Expiration:
+   Chrome enforces certificate lifetime boundaries (`notBefore` and `notAfter`) against the local system clock. Expired or not-yet-valid certificates fail natively with `NET::ERR_CERT_DATE_INVALID`.
+4. Certificate Revocation & CRLSets:
+   Chrome checks revocation state using out-of-band compiled CRLSets and OCSP stapling. Revoked certificates fail natively with `NET::ERR_CERT_REVOKED`.
+5. Basic Constraints & Key Usages:
+   Chrome enforces that intermediate and root CAs have `basicConstraints: CA:TRUE`, valid path lengths, and appropriate `keyUsage` flags (`keyCertSign`, `cRLSign`, `serverAuth`).
+6. Native Trust Store Verification:
+   Chrome verifies that the chain anchors to a recognized trust anchor in the Chrome Root Store (CRS) or local OS database (e.g. NSS database `$HOME/.pki/nssdb` or system `/etc/pki/ca-trust`).
+
+> [!NOTE]
+> Chrome's native security baseline remains active at all times. If a certificate chain is forged, expired, or revoked, Chrome's internal net stack blocks the connection immediately. Indy cannot and does not bypass or override native cryptographic verification errors.
+
+### 6.2 Indy Extension Supervisory Responsibilities
+
+Chrome's native engine is binary: if a certificate chain is valid and anchors to *any* pre-installed root, Chrome silently accepts the connection without user notification or policy options. Indy intercepts this silent acceptance:
+
+1. Elimination of Silent Trust:
+   Chrome silently trusts hundreds of commercial and governmental root CAs. Indy checks every chain against user-configured policies (`accept`, `ask`, `deny`), eliminating silent pass-through.
+2. Interactive Interstitial Prompts (`prompt.html`):
+   When a certificate chain anchors to an authority with policy `ask`, Indy pauses the browser navigation before page content loads, rendering the complete chain hierarchy (Root &rarr; Intermediaries &rarr; Leaf) for explicit user review.
+3. Selective Intermediate CA Authorization:
+   Chrome treats any intermediate CA issued by a trusted root as valid. Indy allows users to isolate intermediate CAs (e.g., trust commercial Root CA `DigiCert Global Root G2`, but selectively deny or prompt for specific enterprise intermediate CAs).
+4. Subresource Request Blocking via DNR:
+   When an authority is set to `deny`, Indy prevents covert background subresource leaks (scripts, images, fetch calls, websockets) by dynamically registering Declarative Net Request (DNR) session rules for the target origin.
+5. Host Root Store Sync & Custom Root Provisioning:
+   Indy synchronizes system root certificates into an accessible local database and enables importing private, homelab, and enterprise internal root certificates with live X.509 metadata preview.
+
+### 6.3 Functional Comparison Matrix
+
+| Security / Trust Function | Handled by Native Chrome Engine | Handled by Indy | Operational Consequence |
+|---|---|---|---|
+| **RSA / ECDSA Signature Math** | Yes | No | Chrome blocks mathematical forgery (`ERR_CERT_INVALID`). |
+| **Domain / SAN Validation** | Yes | No | Chrome blocks domain impersonation (`ERR_CERT_COMMON_NAME_INVALID`). |
+| **Certificate Expiration Dates** | Yes | No | Chrome blocks expired certs (`ERR_CERT_DATE_INVALID`). |
+| **Revocation Checks (CRLSets)** | Yes | No | Chrome blocks revoked certificates (`ERR_CERT_REVOKED`). |
+| **Silent Trust Elimination** | No (Silently accepts) | **Yes** | Indy halts automated connection for non-accepted CAs. |
+| **Root & Intermediate Gating** | No (All or nothing) | **Yes** | User controls each CA level individually (`accept`, `ask`, `deny`). |
+| **User Interstitial Decision** | No (Only on error) | **Yes** | User can choose Accept Always, Ask Every Time, or Deny. |
+| **Subresource Leak Isolation** | No | **Yes** | DNR session rules block background network traffic on Deny. |
+| **Private Root Ingestion & Preview** | No UI / Hidden in chrome://settings | **Yes** | Ingest custom roots with live metadata preview & policy assignment. |
+
+### 6.4 Practical Security Considerations
+
+- **Dual-Approval Requirement for Private Roots**:
+  When a user uploads a new private root CA in Indy and sets its policy to `accept`, Chrome's native engine will still require that root certificate to be registered in the OS or NSS trust store (`certutil -d sql:$HOME/.pki/nssdb -A ...`). If not installed in the OS store, Chrome will correctly display `NET::ERR_CERT_AUTHORITY_INVALID`.
+- **Pre-Emptive Navigation Interception**:
+  Indy intercepts top-level navigations at `webNavigation.onBeforeNavigate` and `onCommitted`. If an authority is denied, Indy redirects the tab to `blocked.html` before any server HTML or scripts execute, preventing browser fingerprinting and zero-day payload delivery.
