@@ -83,6 +83,60 @@ class TestIndyCertificateHost(unittest.TestCase):
                     self.assertEqual(inter["role"], "intermediate")
                     self.assertTrue(inter["commonName"])
 
+    def test_05_custom_root_lifecycle(self) -> None:
+        import datetime
+        from cryptography import x509
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import rsa
+        from cryptography.x509.oid import NameOID
+
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        subject = issuer = x509.Name([
+            x509.NameAttribute(NameOID.COMMON_NAME, "Unit Test Private Root CA"),
+            x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Indy Unit Testing Org"),
+        ])
+        now = datetime.datetime.now(datetime.timezone.utc)
+        cert = (
+            x509.CertificateBuilder()
+            .subject_name(subject)
+            .issuer_name(issuer)
+            .public_key(key.public_key())
+            .serial_number(x509.random_serial_number())
+            .not_valid_before(now - datetime.timedelta(days=1))
+            .not_valid_after(now + datetime.timedelta(days=365))
+            .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+            .sign(key, hashes.SHA256())
+        )
+        pem_str = cert.public_bytes(serialization.Encoding.PEM).decode("utf-8")
+
+        # 1. Parse certificate
+        parsed = self.resolver.parse_certificate(pem_str)
+        self.assertTrue(parsed["ok"])
+        self.assertEqual(parsed["cert"]["commonName"], "Unit Test Private Root CA")
+        self.assertEqual(parsed["cert"]["organization"], "Indy Unit Testing Org")
+        self.assertTrue(parsed["cert"]["isCA"])
+
+        # 2. Upload root certificate
+        upload_res = self.resolver.upload_root_certificate(pem_str, policy="accept")
+        self.assertTrue(upload_res["ok"])
+        cert_id = upload_res["cert"]["id"]
+        self.assertEqual(upload_res["cert"]["source"], "custom")
+        self.assertEqual(upload_res["cert"]["policy"], "accept")
+
+        # Verify it shows up in get_system_roots
+        roots_res = self.resolver.get_system_roots()
+        cns = {r["commonName"] for r in roots_res["roots"]}
+        self.assertIn("Unit Test Private Root CA", cns)
+
+        # 3. Delete custom root
+        del_res = self.resolver.delete_custom_root(cert_id)
+        self.assertTrue(del_res["ok"])
+
+        # Verify it is removed
+        roots_res_after = self.resolver.get_system_roots()
+        cns_after = {r["commonName"] for r in roots_res_after["roots"]}
+        self.assertNotIn("Unit Test Private Root CA", cns_after)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

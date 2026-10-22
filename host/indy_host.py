@@ -79,6 +79,8 @@ SYSTEM_CA_BUNDLE_PATHS = [
     "/etc/pki/tls/certs/ca-bundle.crt",
 ]
 
+CUSTOM_ROOTS_DIR = os.path.expanduser("~/.config/indy/custom_roots")
+
 DEFAULT_HTTP_PORT = 7879
 CHAIN_CACHE_TTL_SECONDS = 300
 
@@ -313,7 +315,91 @@ class CertificateResolver:
                         self._roots_by_ski[info["subjectKeyId"]] = info
                     self._roots_by_subject[info["subject"]] = info
 
+            # Load any uploaded private / custom root certificates from CUSTOM_ROOTS_DIR
+            if os.path.isdir(CUSTOM_ROOTS_DIR):
+                for fname in os.listdir(CUSTOM_ROOTS_DIR):
+                    if fname.endswith((".pem", ".crt", ".cer")):
+                        fpath = os.path.join(CUSTOM_ROOTS_DIR, fname)
+                        try:
+                            with open(fpath, "rb") as f:
+                                custom_pem = f.read()
+                            custom_certs = x509.load_pem_x509_certificates(custom_pem)
+                            for cert in custom_certs:
+                                role = "root" if _is_ca(cert) and cert.subject == cert.issuer else ("root" if _is_ca(cert) else "intermediate")
+                                info = cert_to_dict(cert, role=role, source="custom")
+                                info["isCustom"] = True
+                                info["pem"] = custom_pem.decode("utf-8", errors="replace")
+                                self._roots_by_id[info["id"]] = info
+                                if info.get("subjectKeyId"):
+                                    self._roots_by_ski[info["subjectKeyId"]] = info
+                                self._roots_by_subject[info["subject"]] = info
+                        except Exception as e:
+                            warnings.warn(f"Failed loading custom root {fname}: {e}")
+
             return list(self._roots_by_id.values())
+
+    def parse_certificate(self, pem_str: str) -> Dict[str, Any]:
+        if not pem_str or not pem_str.strip():
+            return {"ok": False, "error": "No PEM certificate data provided"}
+        try:
+            pem_bytes = pem_str.strip().encode("utf-8")
+            certs = x509.load_pem_x509_certificates(pem_bytes)
+            if not certs:
+                return {"ok": False, "error": "No valid X.509 certificate found in provided PEM text"}
+            parsed = []
+            for cert in certs:
+                role = "root" if _is_ca(cert) and cert.subject == cert.issuer else ("root" if _is_ca(cert) else "intermediate")
+                info = cert_to_dict(cert, role=role, source="custom")
+                info["isCustom"] = True
+                parsed.append(info)
+            return {"ok": True, "count": len(parsed), "certs": parsed, "cert": parsed[0]}
+        except Exception as exc:
+            return {"ok": False, "error": f"Failed to parse X.509 certificate: {exc}"}
+
+    def upload_root_certificate(self, pem_str: str, policy: str = "ask") -> Dict[str, Any]:
+        parse_res = self.parse_certificate(pem_str)
+        if not parse_res.get("ok"):
+            return parse_res
+
+        certs = parse_res["certs"]
+        os.makedirs(CUSTOM_ROOTS_DIR, exist_ok=True)
+
+        saved = []
+        with self._lock:
+            for cert_info in certs:
+                cert_info["policy"] = policy
+                fpath = os.path.join(CUSTOM_ROOTS_DIR, f"{cert_info['fingerprint']}.pem")
+                with open(fpath, "w", encoding="utf-8") as f:
+                    f.write(pem_str.strip())
+                self._roots_by_id[cert_info["id"]] = cert_info
+                if cert_info.get("subjectKeyId"):
+                    self._roots_by_ski[cert_info["subjectKeyId"]] = cert_info
+                self._roots_by_subject[cert_info["subject"]] = cert_info
+                saved.append(cert_info)
+
+        return {"ok": True, "count": len(saved), "certs": saved, "cert": saved[0]}
+
+    def delete_custom_root(self, cert_id: str) -> Dict[str, Any]:
+        with self._lock:
+            target = self._roots_by_id.get(cert_id)
+            if not target:
+                return {"ok": False, "error": f"Certificate {cert_id} not found in database"}
+            fp = target.get("fingerprint")
+            if fp and os.path.isdir(CUSTOM_ROOTS_DIR):
+                fpath = os.path.join(CUSTOM_ROOTS_DIR, f"{fp}.pem")
+                if os.path.isfile(fpath):
+                    try:
+                        os.remove(fpath)
+                    except Exception as e:
+                        return {"ok": False, "error": f"Failed deleting file {fpath}: {e}"}
+            self._roots_by_id.pop(cert_id, None)
+            ski = target.get("subjectKeyId")
+            if ski:
+                self._roots_by_ski.pop(ski, None)
+            subj = target.get("subject")
+            if subj:
+                self._roots_by_subject.pop(subj, None)
+        return {"ok": True, "id": cert_id}
 
     def get_system_roots(self) -> Dict[str, Any]:
         with self._lock:
@@ -482,6 +568,15 @@ class CertificateResolver:
             port = int(request.get("port", 443))
             chain_data = request.get("chainData", {})
             return self.set_simulated_chain(host, port, chain_data)
+        if action == "parse_certificate":
+            return self.parse_certificate(request.get("pemData", ""))
+        if action == "upload_root_certificate":
+            return self.upload_root_certificate(
+                request.get("pemData", ""),
+                policy=request.get("policy", "ask")
+            )
+        if action == "delete_custom_root":
+            return self.delete_custom_root(request.get("id", ""))
         return {"ok": False, "error": f"Unknown action: {action}"}
 
 

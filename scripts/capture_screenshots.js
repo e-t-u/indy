@@ -99,6 +99,25 @@ async function capture() {
     await page.screenshot({ path: optionsPath, fullPage: false });
     console.log(`Saved ${optionsPath}`);
 
+    // 1b. Capture Upload Modal
+    console.log('Capturing upload root certificate modal...');
+    await page.click('#btn-open-upload');
+    await page.waitForFunction(() => {
+      const modal = document.getElementById('upload-modal');
+      return modal && !modal.classList.contains('hidden');
+    });
+    // Add sample PEM text so preview shows in screenshot
+    await page.evaluate(() => {
+      const textarea = document.getElementById('pem-textarea');
+      textarea.value = `-----BEGIN CERTIFICATE-----\nMIIDdzCCAl+gAwIBAgIUS2d...SAMPLE ENTERPRISE ROOT CA...==\n-----END CERTIFICATE-----`;
+    });
+    await new Promise(r => setTimeout(r, 400));
+    const modalPath = path.join(OUT_DIR, 'upload_modal.png');
+    await page.screenshot({ path: modalPath, fullPage: false });
+    console.log(`Saved ${modalPath}`);
+    await page.click('#btn-close-modal');
+    await new Promise(r => setTimeout(r, 300));
+
     // 2. Capture Interstitial Prompt UI
     console.log('Capturing prompt page...');
     await page.setViewport({ width: 1000, height: 820, deviceScaleFactor: 2 });

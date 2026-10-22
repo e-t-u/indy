@@ -120,6 +120,16 @@ Persistent records reside in `chrome.storage.local`. Ephemeral per-tab states an
 - `role: "intermediate"`: Intermediate CA certificate issued by a Root CA or higher-level Intermediate CA. Contains a `parentId` field referencing its issuer's SHA-256 fingerprint ID.
 - `role: "leaf"`: End-entity TLS certificate issued to the web host. Not stored permanently in `certDatabase`, but inspected dynamically during navigations.
 
+### 3.3 Private & Custom Root Certificate Ingestion
+
+In addition to system trust stores, Indy supports provisioning private, enterprise internal, and development root CAs:
+1. Upload & Parsing:
+   Users upload or paste PEM-encoded X.509 certificates (`.pem`, `.crt`, `.cer`) via the Options UI modal. The service worker delegates parsing to `indy_host.py` via `parse_certificate`, which uses the Python `cryptography.x509` engine to extract Subject, Issuer, Serial Number, Basic Constraints (`isCA`), and SHA-256 fingerprint without persisting anything prematurely.
+2. Host Persistence (`~/.config/indy/custom_roots/`):
+   Upon user confirmation (`upload_root_certificate`), the host daemon writes the PEM data to `$HOME/.config/indy/custom_roots/<FINGERPRINT>.pem` and registers it directly into `indy_host.py`'s live authority index (`_roots_by_id`, `_roots_by_ski`, `_roots_by_subject`).
+3. Browser State Synchronization:
+   The background service worker registers the new authority in `chrome.storage.local.certDatabase` with `source: "custom"` and the user's initial policy choice (`ask`, `accept`, `deny`). Custom roots are dynamically displayed with a distinct `Private CA` badge in the database manager and can be deleted on-demand with one click (`delete_custom_root`), cleanly removing the host PEM file and browser policy record.
+
 ---
 
 ## 4. Policy Evaluation & Interception Lifecycle

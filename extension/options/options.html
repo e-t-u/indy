@@ -18,7 +18,8 @@
         </div>
       </div>
       <div class="header-actions">
-        <button id="btn-sync-roots" type="button" class="btn-action primary">Sync System Root Store</button>
+        <button id="btn-open-upload" type="button" class="btn-action highlight">Upload Root Certificate</button>
+        <button id="btn-sync-roots" type="button" class="btn-action primary">Sync OS Root Store</button>
         <button id="btn-bulk-ask" type="button" class="btn-action">Set All to Ask</button>
         <button id="btn-bulk-accept" type="button" class="btn-action">Set All to Accept</button>
       </div>
@@ -28,6 +29,10 @@
       <div class="stat-card">
         <span class="stat-label">System Root CAs</span>
         <span class="stat-value" id="stat-roots">0</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Private / Custom Roots</span>
+        <span class="stat-value" id="stat-custom">0</span>
       </div>
       <div class="stat-card">
         <span class="stat-label">Intermediate CAs</span>
@@ -52,12 +57,18 @@
         type="search"
         id="search-input"
         class="search-input"
-        placeholder="Search by Common Name (e.g. indy, GTS Root R4, WE2, DigiCert), Organization, or SHA-256..."
+        placeholder="Search by Common Name (e.g. indy, GTS Root R4, DigiCert, private CA), Org, or SHA-256..."
       >
       <select id="filter-role" class="select-control">
         <option value="all">All Roles (Root + Intermediate)</option>
         <option value="root">Root CAs Only</option>
         <option value="intermediate">Intermediate CAs Only</option>
+      </select>
+      <select id="filter-source" class="select-control">
+        <option value="all">All Sources</option>
+        <option value="system">System Root Store</option>
+        <option value="custom">Private / Uploaded</option>
+        <option value="discovered">Discovered Intermediates</option>
       </select>
       <select id="filter-policy" class="select-control">
         <option value="all">All Policies</option>
@@ -75,12 +86,12 @@
       <table class="cert-table">
         <thead>
           <tr>
-            <th>Role</th>
+            <th>Role / Source</th>
             <th>Common Name &amp; Subject</th>
             <th>Organization / Issuer</th>
             <th>Validity</th>
             <th>SHA-256 Fingerprint</th>
-            <th>Trust Policy</th>
+            <th>Trust Policy &amp; Actions</th>
           </tr>
         </thead>
         <tbody id="cert-tbody"></tbody>
@@ -107,6 +118,65 @@
       </table>
     </section>
   </div>
+
+  <!-- Upload Modal Dialog -->
+  <div id="upload-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h2 id="modal-title">Upload New Root Certificate</h2>
+        <button id="btn-close-modal" type="button" class="btn-close" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-desc">
+          Import a custom or private root certificate in PEM format (.pem, .crt, .cer). Indy will track it as an authority trust anchor with your designated policy.
+        </p>
+
+        <div class="drop-zone" id="drop-zone">
+          <input type="file" id="cert-file-input" accept=".pem,.crt,.cer,.txt" class="file-input-hidden">
+          <div class="drop-content">
+            <span class="drop-icon">🛡️</span>
+            <div class="drop-primary">Choose a certificate file or drag &amp; drop here</div>
+            <div class="drop-hint">Supports PEM X.509 certificates (.pem, .crt, .cer)</div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="pem-textarea" class="form-label">Or Paste Certificate (PEM Text):</label>
+          <textarea
+            id="pem-textarea"
+            class="pem-textarea"
+            placeholder="-----BEGIN CERTIFICATE-----&#10;MIIB...&#10;-----END CERTIFICATE-----"
+            rows="5"
+            spellcheck="false"
+          ></textarea>
+        </div>
+
+        <div class="form-group">
+          <label for="upload-policy" class="form-label">Initial Trust Policy:</label>
+          <select id="upload-policy" class="select-control full-width">
+            <option value="ask">Ask (Prompt user every time a site chains to this CA)</option>
+            <option value="accept">Accept (Automatically trust all sites chaining to this CA)</option>
+            <option value="deny">Deny (Block all connections chaining to this CA)</option>
+          </select>
+        </div>
+
+        <div id="cert-preview-card" class="cert-preview-card hidden">
+          <div class="preview-header">
+            <span class="preview-title">Certificate Preview</span>
+            <span class="badge-role root" id="preview-role-badge">Root CA</span>
+          </div>
+          <div class="preview-grid" id="preview-grid"></div>
+        </div>
+
+        <div id="upload-alert" class="alert-box hidden"></div>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-cancel-modal" type="button" class="btn-action">Cancel</button>
+        <button id="btn-submit-upload" type="button" class="btn-action primary" disabled>Import &amp; Save Certificate</button>
+      </div>
+    </div>
+  </div>
+
   <script src="options.js"></script>
 </body>
 </html>

@@ -22,8 +22,10 @@ Indy handles both Root Certificate Authorities and Intermediary Certificate Auth
 4. Active Tab Chain Inspector (`popup.html`):
    A toolbar popup showing the active tab's TLS certificate chain and allowing instant one-click policy toggling.
 5. Searchable Certificate Database Manager (`options.html`):
-   A management console with search, filtering by role (Root vs Intermediate) and policy (`accept`, `ask`, `deny`), bulk operations, and live audit logging.
-6. Dual Host Architecture (HTTP RPC & Native Messaging):
+   A management console with search, filtering by role (Root vs Intermediate), source (System vs Private/Custom), and policy (`accept`, `ask`, `deny`), bulk operations, and live audit logging.
+6. Private & Custom Root Certificate Upload:
+   Import internal enterprise, homelab, or custom root CAs via drag & drop or PEM paste. Indy parses the X.509 structure, provides instant live preview, persists them to host storage (`~/.config/indy/custom_roots/`), and enforces configured trust policies across all browser requests.
+7. Dual Host Architecture (HTTP RPC & Native Messaging):
    Works across native Chrome, Chromium, and Flatpak Chrome (`com.google.ChromeDev`) via a localhost bridge (`http://127.0.0.1:7879`) and Chrome Native Messaging.
 
 ---
@@ -60,12 +62,17 @@ The database management console booted from the host operating system's root sto
 
 ![Root & Intermediate Certificate Policy Manager](docs/screenshots/options.png)
 
-### 3. Active Tab Chain Inspector (`popup.html`)
+### 3. Private Root Certificate Upload Dialog (`upload_modal.png`)
+Users can upload internal enterprise, private CA, or testing root certificates via file drag & drop or raw PEM text. Indy parses the X.509 certificate on-the-fly, presents an authority metadata preview, and registers the certificate into Indy's persistent trust store with the user's initial policy choice (`ask`, `accept`, or `deny`).
+
+![Private Root Certificate Upload Dialog](docs/screenshots/upload_modal.png)
+
+### 4. Active Tab Chain Inspector (`popup.html`)
 The toolbar popup displays the active tab's certificate hierarchy (Root CA &rarr; Intermediate CA(s) &rarr; Leaf Server Certificate) and provides instant one-click policy toggles for authorities on the current page.
 
 ![Active Tab Chain Inspector Toolbar Popup](docs/screenshots/popup.png)
 
-### 4. Connection Blocked Screen (`blocked.html`)
+### 5. Connection Blocked Screen (`blocked.html`)
 When an HTTPS site presents a certificate chained to a denied Root or Intermediate CA, Indy immediately blocks the navigation and adds Chrome Declarative Net Request (DNR) session rules to prevent background subresource requests.
 
 ![Denied Certificate Authority Block Screen](docs/screenshots/blocked.png)
@@ -164,6 +171,7 @@ Results:
 - Canonical "indy" Root CA & Intermediate: Passed. Verified synthetic `CN=indy` (Root CA) and `CN=indy-intermediate` (Intermediate CA) hierarchy.
 - Top 5 USA Websites TLS Verification: Passed.
 - Top 5 Indian Websites TLS Verification: Passed.
+- Private / Custom Root CA Ingestion & Deletion: Passed. Tested X.509 PEM parsing, disk persistence (`~/.config/indy/custom_roots/`), and dynamic trust removal.
 
 ### 2. Live Chromium E2E Test Suite (`test_chrome_e2e.js`)
 
@@ -197,6 +205,16 @@ The E2E test proved granular policy isolation:
 2. Intermediary `DigiCert Global G2 TLS RSA SHA256 2020 CA1` set to `accept`.
 3. Intermediary `GeoTrust TLS RSA CA G1` set to `deny`.
 4. Result: `reddit.com` loaded with status `ACCEPT`, while `hdfcbank.com` was blocked with status `DENY` specifically pointing to the denied intermediary CA.
+
+#### Private Root Certificate Lifecycle Verification
+
+The E2E test suite additionally validates custom authority provisioning directly through the Chrome extension frontend:
+1. Open Options UI and click "Upload Root Certificate".
+2. Generate and paste a 2048-bit RSA self-signed Root CA certificate (`CN=Enterprise Secure Gateway Root CA`).
+3. Verify live X.509 metadata preview parses Common Name, Organization, Validity dates, and `CA: TRUE` basic constraints.
+4. Select `accept` trust policy and submit.
+5. Verify certificate appears in the Certificate Manager with `Private CA` badge and `ACCEPT` policy.
+6. Trigger one-click certificate deletion and confirm removal from both host disk storage and active browser policy state.
 
 ---
 

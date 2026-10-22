@@ -820,6 +820,70 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         return;
       }
 
+      if (action === 'parse_certificate') {
+        const hostRes = await callIndyHost({
+          action: 'parse_certificate',
+          pemData: message.pemData
+        });
+        sendResponse(hostRes);
+        return;
+      }
+
+      if (action === 'upload_root_certificate') {
+        const hostRes = await callIndyHost({
+          action: 'upload_root_certificate',
+          pemData: message.pemData,
+          policy: message.policy || 'ask'
+        });
+
+        if (!hostRes || !hostRes.ok) {
+          sendResponse({
+            ok: false,
+            error: (hostRes && hostRes.error) || 'Failed to upload certificate to host'
+          });
+          return;
+        }
+
+        const { certDatabase } = await getStoredState();
+        const nowIso = new Date().toISOString();
+        const certsToSave = Array.isArray(hostRes.certs) ? hostRes.certs : [hostRes.cert];
+
+        for (const c of certsToSave) {
+          if (!c || !c.id) continue;
+          certDatabase[c.id] = {
+            ...c,
+            policy: message.policy || 'ask',
+            source: 'custom',
+            firstSeenAt: nowIso,
+            updatedAt: nowIso
+          };
+        }
+
+        await chrome.storage.local.set({ certDatabase });
+        sendResponse({
+          ok: true,
+          count: certsToSave.length,
+          cert: certsToSave[0]
+        });
+        return;
+      }
+
+      if (action === 'delete_certificate') {
+        const certId = message.id;
+        const { certDatabase } = await getStoredState();
+        delete certDatabase[certId];
+        await chrome.storage.local.set({ certDatabase });
+
+        // Also notify host to remove file from ~/.config/indy/custom_roots
+        await callIndyHost({
+          action: 'delete_custom_root',
+          id: certId
+        });
+
+        sendResponse({ ok: true });
+        return;
+      }
+
       if (action === 'clear_audit_log') {
         await chrome.storage.local.set({ auditLog: [] });
         sendResponse({ ok: true });

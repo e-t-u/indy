@@ -344,7 +344,7 @@ async function runTests() {
     logInfo('Step 11: Testing real browser tab navigation interception on HTTP redirect (aliexpress.com)...');
     const liveNavTab = await browser.newPage();
     try {
-      await liveNavTab.goto('http://aliexpress.com', { waitUntil: 'load', timeout: 15000 });
+      await liveNavTab.goto('http://aliexpress.com', { timeout: 15000 });
     } catch (_) {
       // Aborted by redirect to prompt.html is expected
     }
@@ -354,6 +354,98 @@ async function runTests() {
     }
     logPass(`Live tab intercepted & redirected to Indy prompt: ${finalNavUrl}`);
     await liveNavTab.close();
+
+    // 12. Verify Private / Custom Root Certificate Upload & Management in Options UI
+    logInfo('Step 12: Testing Private Root Certificate upload and deletion via Options UI...');
+    await page.goto(optionsUrl, { waitUntil: 'networkidle0' });
+
+    // Handle any window.confirm calls
+    page.on('dialog', async (dialog) => {
+      await dialog.accept();
+    });
+
+    // Generate a temporary self-signed private root CA certificate with openssl
+    const tempCertPem = cp.execSync(
+      'openssl req -x509 -newkey rsa:2048 -nodes -keyout /tmp/e2e_ca.key -out /tmp/e2e_ca.crt -days 365 -subj "/CN=Enterprise Secure Gateway Root CA/O=Acme Corp Security" 2>/dev/null && cat /tmp/e2e_ca.crt'
+    ).toString().trim();
+
+    // Open upload modal
+    await page.click('#btn-open-upload');
+    const isModalOpen = await page.evaluate(() => {
+      const modal = document.getElementById('upload-modal');
+      return modal && !modal.classList.contains('hidden');
+    });
+    if (!isModalOpen) {
+      throw new Error('Upload modal failed to open upon clicking #btn-open-upload');
+    }
+
+    // Fill PEM and verify preview
+    await page.evaluate((pem) => {
+      const textarea = document.getElementById('pem-textarea');
+      textarea.value = pem;
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    }, tempCertPem);
+
+    // Wait for live preview to render
+    await page.waitForFunction(() => {
+      const preview = document.getElementById('preview-grid');
+      return preview && preview.textContent.includes('Enterprise Secure Gateway Root CA');
+    }, { timeout: 5000 });
+    logPass('Live certificate preview correctly parsed PEM in upload dialog');
+
+    // Select policy 'accept' and submit upload
+    await page.select('#upload-policy', 'accept');
+    await page.click('#btn-submit-upload');
+
+    // Wait for modal to close and certificate table to reload
+    await page.waitForFunction(() => {
+      const modal = document.getElementById('upload-modal');
+      return modal && modal.classList.contains('hidden');
+    }, { timeout: 5000 });
+
+    // Verify certificate appears in the options table
+    await page.type('#search-input', 'Enterprise Secure Gateway');
+    await new Promise(r => setTimeout(r, 400));
+
+    const uploadedRow = await page.evaluate(() => {
+      const rows = Array.from(document.querySelectorAll('#cert-tbody tr'));
+      const target = rows.find(r => r.dataset.commonName === 'Enterprise Secure Gateway Root CA');
+      if (!target) return null;
+      const sourceBadge = target.querySelector('.badge-source.custom') || target.querySelector('.badge-source');
+      const activeSeg = target.querySelector('.seg-btn.active');
+      const deleteBtn = target.querySelector('.btn-delete-cert');
+      return {
+        found: true,
+        hasCustomBadge: !!sourceBadge && sourceBadge.textContent.includes('Private CA'),
+        policy: activeSeg ? activeSeg.dataset.pol : null,
+        hasDeleteBtn: !!deleteBtn
+      };
+    });
+
+    if (!uploadedRow || !uploadedRow.found) {
+      throw new Error('Uploaded private root CA not found in Options table');
+    }
+    if (!uploadedRow.hasCustomBadge) {
+      throw new Error('Expected custom root CA to display badge-source custom / Private CA tag');
+    }
+    if (uploadedRow.policy !== 'accept') {
+      throw new Error(`Expected uploaded cert policy to be 'accept', got '${uploadedRow.policy}'`);
+    }
+    logPass('Uploaded private Root CA verified in table with "Custom" badge and "accept" policy');
+
+    // Delete custom certificate via Options table delete button
+    await page.click('#cert-tbody tr .btn-delete-cert');
+    await new Promise(r => setTimeout(r, 600));
+
+    // Verify certificate is removed from database
+    const certStillPresent = await page.evaluate(() => {
+      const rows = Array.from(document.querySelectorAll('#cert-tbody tr'));
+      return rows.some(r => r.dataset.commonName === 'Enterprise Secure Gateway Root CA');
+    });
+    if (certStillPresent) {
+      throw new Error('Custom root CA was not deleted after clicking delete button');
+    }
+    logPass('Private Root CA successfully removed from trust store and database');
 
     console.log('\n\x1b[32m=======================================================');
     console.log('ALL INDY CHROME EXTENSION E2E TESTS PASSED SUCCESSFULLY');
