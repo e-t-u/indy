@@ -30,44 +30,24 @@ To solve these constraints cleanly across standard Chrome, Chromium, and Flatpak
 ```mermaid
 flowchart TD
     subgraph Browser ["Google Chrome Browser (Manifest V3)"]
-        SW["Indy Background Service Worker (service-worker.js)"]
-        Nav["chrome.webNavigation (onBeforeNavigate)"]
-        DNR["chrome.declarativeNetRequest (Session Rules)"]
-        StoreLocal["chrome.storage.local (certDatabase, settings)"]
-        StoreSession["chrome.storage.session (tabStates, hostChainCache)"]
-        UI_Prompt["prompt.html (Interstitial Decision UI)"]
-        UI_Blocked["blocked.html (Denied Authority Warning)"]
-        UI_Popup["popup.html (Active Tab Chain Inspector)"]
-        UI_Options["options.html (Certificate Policy Manager)"]
-
-        Nav --> SW
-        SW --> StoreLocal
-        SW --> StoreSession
-        SW --> DNR
-        SW --> UI_Prompt
-        SW --> UI_Blocked
-        UI_Popup --> SW
-        UI_Options --> SW
+        direction TB
+        Nav["chrome.webNavigation (onBeforeNavigate / onCommitted)"] --> SW["Indy Service Worker (service-worker.js)"]
+        SW --> DNR["chrome.declarativeNetRequest (Session Rules)"]
+        SW --> Storage["chrome.storage (local & session)"]
+        SW --> UIs["Extension UI (prompt.html, blocked.html, popup, options)"]
     end
 
-    subgraph Host ["Linux Host System / Companion Daemon"]
-        HostPy["Indy Host (indy_host.py)"]
-        NativePipe["Chrome Native Messaging (stdio pipe)"]
-        HttpPipe["Local HTTP RPC Bridge (127.0.0.1:7879)"]
-        SystemdUnit["indy-daemon.service (systemd user unit)"]
-        OSStore["OS Trust Store (/etc/pki/ca-trust/...)"]
-        TLSHandshake["Python SSL / Cryptography Engine"]
-
-        SystemdUnit --> HostPy
-        HostPy --> HttpPipe
-        HostPy --> NativePipe
-        HostPy --> OSStore
-        HostPy --> TLSHandshake
+    subgraph Host ["Linux Host System / indy-daemon.service"]
+        direction TB
+        Bridge["IPC Bridge (HTTP RPC 127.0.0.1:7879 / Native stdio)"]
+        Resolver["TLS Chain Resolver & X.509 Cryptography Engine"]
+        Stores["OS Trust Store & Custom Roots (~/.config/indy/custom_roots/)"]
+        Bridge --> Resolver
+        Resolver --> Stores
     end
 
-    SW <--> HttpPipe
-    SW <--> NativePipe
-    TLSHandshake <--> Web["Target HTTPS Web Servers"]
+    SW <-->|"Local RPC / Native Pipe"| Bridge
+    Resolver <-->|"Verify TLS Handshake"| Web["Target HTTPS Web Servers"]
 ```
 
 ### 2.2 Dual Transport Protocol (HTTP RPC & Native Messaging)

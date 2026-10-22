@@ -6,6 +6,8 @@
 
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
+const cp = require('child_process');
 
 // Target directory and input file from CLI args
 const inputFile = process.argv[2];
@@ -256,6 +258,19 @@ async function renderPDF() {
     }
     const escapedTitle = docTitle.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+    // Resolve local mermaid bundle for fast, reliable offline rendering
+    let mermaidScriptTag = '<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>';
+    const localMermaidPaths = [
+        path.join(os.homedir(), 'node_modules', 'mermaid', 'dist', 'mermaid.min.js'),
+        path.join(__dirname, '..', 'node_modules', 'mermaid', 'dist', 'mermaid.min.js')
+    ];
+    for (const p of localMermaidPaths) {
+        if (fs.existsSync(p)) {
+            mermaidScriptTag = `<script>${fs.readFileSync(p, 'utf8')}</script>`;
+            break;
+        }
+    }
+
     // Full Executive HTML Template with KaTeX & Mermaid.js
     const fullHtml = `<!DOCTYPE html>
 <html lang="en">
@@ -280,7 +295,7 @@ async function renderPDF() {
             throwOnError : false
         });"></script>
     <!-- Mermaid.js for Native Vector Diagram Rendering -->
-    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    ${mermaidScriptTag}
     <style>
         @page {
             size: ${isLandscape ? 'A4 landscape' : 'A4 portrait'};
@@ -760,9 +775,6 @@ async function renderPDF() {
         ]
     };
 
-    const os = require('os');
-    const cp = require('child_process');
-
     const standardPaths = [
         process.env.CHROME_BIN,
         '/usr/bin/google-chrome',
@@ -814,6 +826,9 @@ async function renderPDF() {
 
     const browser = await puppeteer.launch(puppeteerOptions);
     const page = await browser.newPage();
+    page.on('console', msg => console.log('PAGE LOG [' + msg.type() + ']:', msg.text()));
+    page.on('pageerror', err => console.log('PAGE ERROR:', err.message));
+    page.on('requestfailed', req => console.log('REQUEST FAILED:', req.url(), req.failure() && req.failure().errorText));
     await page.setContent(fullHtml, { waitUntil: 'networkidle0' });
 
     // Wait for web fonts and trigger KaTeX and Mermaid DOM rendering
@@ -833,10 +848,36 @@ async function renderPDF() {
             });
         }
         if (window.mermaid) {
-            await window.mermaid.run();
+            try {
+                await window.mermaid.run();
+            } catch (err) {
+                console.error("Mermaid run error:", err);
+            }
         }
     });
-    await new Promise(r => setTimeout(r, 1500));
+
+    // Verify all Mermaid diagrams rendered into SVG without errors
+    const mermaidVerification = await page.evaluate(() => {
+        const errorNodes = document.querySelectorAll('.error-icon, [id^="dmermaid-error"], .error-text, svg[aria-roledescription="error"]');
+        if (errorNodes.length > 0) {
+            return Array.from(errorNodes).map(n => n.textContent || n.innerHTML).join('; ');
+        }
+        if (document.body.innerText.includes("Syntax error in text")) {
+            return "Syntax error in text detected in page";
+        }
+        const unrendered = Array.from(document.querySelectorAll('.mermaid')).filter(el => !el.querySelector('svg'));
+        if (unrendered.length > 0) {
+            return `${unrendered.length} mermaid diagram(s) failed to render into SVG`;
+        }
+        return null;
+    });
+
+    if (mermaidVerification) {
+        await browser.close();
+        throw new Error(`[FAIL] Mermaid rendering error: ${mermaidVerification}`);
+    }
+
+    await new Promise(r => setTimeout(r, 1000));
 
     // Export PDF via Chromium Engine
     await page.pdf({
